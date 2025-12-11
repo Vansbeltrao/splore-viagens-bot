@@ -1,0 +1,11 @@
+Fluxo de conversa implementado (resumo):
+- Boas-vindas
+- Pedir nome
+- Pedir tipo de serviço (1-6)
+- Pedir destino (cidade, país) -> responde "Parabéns — ótima escolha!" com o destino
+- Pedir número de adultos/ crianças e idades
+- Pedir datas (ida/volta), validar formato DD/MM/AAAA
+- Perguntar se data é flexível
+- Perguntar classe/hospedagem
+- Perguntar acessibilidade PCD, bagagem despachada, solicitações especiais
+- Confirmar dados e informar prazo de até 24 horas úteis para envio do orçamento
