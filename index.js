@@ -1,26 +1,30 @@
 // Splore Assistente - index.js
 const express = require('express');
 const fetch = require('node-fetch');
-const bodyParser = require('body-parser');
 require('dotenv').config();
-const app = express();
-app.use(bodyParser.json());
 
+const app = express();
+app.use(express.json());
+
+// ENV
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 
-// health
-app.get('/', (req, res) => res.send('Splore Assistente ativo'));
+// HEALTH CHECK
+app.get('/', (req, res) => {
+  res.send('Splore Assistente ativo');
+});
 
-// webhook verification
+/**
+ * WEBHOOK VERIFICATION (META)
+ */
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  // VERIFICAÇÃO EXATA QUE O META EXIGE
   if (mode === 'subscribe' && token === VERIFY_TOKEN) {
     console.log('Webhook verificado com sucesso');
     return res.status(200).send(challenge);
@@ -30,95 +34,93 @@ app.get('/webhook', (req, res) => {
   return res.sendStatus(403);
 });
 
-
-// handle incoming messages
+/**
+ * RECEBE MENSAGENS DO WHATSAPP
+ */
 app.post('/webhook', async (req, res) => {
   try {
-    const body = req.body;
-    if (body.object && body.entry) {
-      for (const entry of body.entry) {
-        const changes = entry.changes || [];
-        for (const change of changes) {
-          const value = change.value;
-          if (value && value.messages) {
-            for (const message of value.messages) {
-              const from = message.from; // user's phone
-              const text = message.text?.body || '';
-              // simple guard: ignore status messages
-              if (!text) continue;
-              // generate reply using OpenAI
-              const reply = await generateReply(text, message, value);
-              // send reply via WhatsApp
-              await sendWhatsAppMessage(from, reply);
-            }
-          }
-        }
-      }
+    const entry = req.body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const message = changes?.value?.messages?.[0];
+
+    if (!message || !message.text) {
+      return res.sendStatus(200);
     }
+
+    const from = message.from;
+    const text = message.text.body;
+
+    console.log('Mensagem recebida:', text);
+
+    const reply = await generateReply(text);
+    await sendWhatsAppMessage(from, reply);
+
     res.sendStatus(200);
   } catch (err) {
-    console.error(err);
+    console.error('Erro no webhook:', err);
     res.sendStatus(500);
   }
 });
 
-// generate reply via OpenAI
-async function generateReply(userText, message, value) {
+/**
+ * OPENAI
+ */
+async function generateReply(userText) {
   try {
-    // system prompt with the flow & tone
-    const systemPrompt = `
-Você é o Splore Assistente, um bot de viagens em português (pt-BR), tom acolhedor.
-Siga o fluxo de coleta de dados: nome, serviço, destino (cidade, país), número de adultos, número de crianças (idades), datas (ida/volta), flexibilidade, classe/hospedagem, acessibilidade PCD, bagagem despachada, solicitações especiais.
-Quando o usuário informar o destino, responda com "Parabéns — ótima escolha!" incluindo o nome do destino.
-Ao final, informe que o orçamento será enviado em até 24 horas úteis.
-Se o usuário pedir "Falar com humano", responda com mensagem pedindo contato humano.
-`;
-    const payload = {
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userText }
-      ],
-      max_tokens: 500
-    };
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `Você é o Splore Assistente, um bot de viagens em português (pt-BR), tom acolhedor.
+Pergunte destino, datas, adultos, crianças, tipo de hospedagem.
+Se pedir humano, informe que um consultor entrará em contato.`
+          },
+          { role: 'user', content: userText }
+        ],
+        max_tokens: 400
+      })
     });
-    const data = await r.json();
-    const text = data.choices?.[0]?.message?.content || 'Desculpe, tivemos um problema para gerar a resposta.';
-    return text;
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || 'Não consegui responder agora.';
   } catch (e) {
-    console.error('OpenAI error', e);
-    return 'Desculpe, tivemos um problema técnico. Tente novamente mais tarde.';
+    console.error('Erro OpenAI:', e);
+    return 'Erro técnico, tente novamente.';
   }
 }
 
-// send message via WhatsApp Cloud API
+/**
+ * ENVIA TEXTO VIA WHATSAPP (MODO TESTE)
+ */
 async function sendWhatsAppMessage(to, message) {
-  const url = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
- 104  const payload = {
-105    messaging_product: 'whatsapp',
-106    to: to,
-107    type: 'template',
-108    template: {
-109      name: 'hello_world',
-110      language: { code: 'en_US' }
-111    }
-112  };
+  const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'text',
+    text: { body: message }
+  };
+
   await fetch(url, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
   });
 }
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Servidor rodando na porta ${port}`));
+// PORT
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
