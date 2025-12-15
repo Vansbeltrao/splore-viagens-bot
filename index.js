@@ -101,12 +101,15 @@ Se o usuário pedir "Falar com humano", responda com mensagem pedindo contato hu
 // send message via WhatsApp Cloud API
 async function sendWhatsAppMessage(to, message) {
   const url = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: to,
-    type: 'text',
-    text: { body: message }
-  };
+ 104  const payload = {
+105    messaging_product: 'whatsapp',
+106    to: to,
+107    type: 'template',
+108    template: {
+109      name: 'hello_world',
+110      language: { code: 'en_US' }
+111    }
+112  };
   await fetch(url, {
     method: 'POST',
     headers: {
