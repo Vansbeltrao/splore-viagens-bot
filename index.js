@@ -38,6 +38,7 @@ app.get('/webhook', (req, res) => {
  * RECEBE MENSAGENS DO WHATSAPP
  */
 app.post('/webhook', async (req, res) => {
+  console.log('WEBHOOK RECEBIDO:', JSON.stringify(req.body, null, 2));
   try {
     const entry = req.body.entry?.[0];
     const changes = entry?.changes?.[0];
